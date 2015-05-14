@@ -1,0 +1,11 @@
+name: osqf
+
+dependencies:
+  - python>=3.4
+  - numpy
+  - pandas
+  - blaze
+  - bokeh
+  - ipython-notebook
+  - flask
+  - seaborn
