@@ -10,7 +10,7 @@ logging.basicConfig(level=logging.DEBUG)
 
 import numpy as np
 
-from bokeh.plotting import figure
+from bokeh.plotting import figure, gridplot
 from bokeh.models import Plot, ColumnDataSource, DataRange1d, TapTool, WheelZoomTool, Circle
 from bokeh.charts import Bar
 from bokeh.models import BlazeDataSource
@@ -31,35 +31,45 @@ class StockModel(object):
     def __init__(self):
         super(StockModel, self).__init__()
         file_name = "notebooks/db2.bcolz"
-        self.df = bz.odo(file_name, pd.DataFrame) #[1000:1100]
-        self.source = ColumnDataSource(self.df[['Date', 'Close']])
-        self.source.add([], 'LogReturns')
-        self.source.add([], 'mids')
-        self.source.add([], 'Vola')
-        self.source.add([], 'ewma')
+        self.df = bz.odo(file_name, pd.DataFrame)[['Date', 'Close']] #[1000:1100]
+        self.returns_df = None
         self.compute_model()
-        # self.source = ColumnDataSource(self.df)
-    
+
     def compute_model(self, _lambda=0.06, n_days=1):
         _com = (1 - _lambda) / _lambda
-        log_returns = np.log(self.df.Close.pct_change(periods=n_days) + 1)
-        self.source.data['LogReturns'] = log_returns[3:]
-        self.source.data['mids'] = log_returns[3:] / 2.
-        self.source.data['Vola'] = pd.ewmstd( log_returns, com=_com, ignore_na=True)[3:]
-        self.source.data['ewma'] = pd.ewma( log_returns, com=_com, ignore_na=True)[3:]
-        print(self.source.data['Vola'])
+        self.df['LogReturns'] = np.log(self.df.Close.pct_change(periods=n_days) + 1)
+        self.df['Vola'] = pd.ewmstd( self.df.LogReturns, com=_com, ignore_na=True)[2:]
+        self.df['DevolLogReturns'] = self.df.LogReturns / self.df.Vola
+        self.df.set_index('Date', inplace=True)
+
+    def compute_returns(self, x, n_scenarios=750, bins=45):
+        dates = pd.to_datetime(x, unit='ms')
+        print(x, dates, dates[0], '<<<?>>>>', dates[0].date())
+        max_date = dates[0].date()
+        min_date = max_date.replace(year=max_date.year-3)
+        self.returns_df = self.df[min_date:max_date].ix[-n_scenarios:]
+        hist, edges = np.histogram(self.returns_df.DevolLogReturns, density=True, bins=bins)
+        return hist, edges
+
+    def compute_data_source(self):
+        source = ColumnDataSource(self.df.reset_index()[2:])
+        source.add(self.df[2:].LogReturns.ge(0).map(lambda x: "steelblue" if x else "red"), 'LogReturnsColor')
+        source.add(self.df[2:].DevolLogReturns / 2., 'y_mids')
+        return source
+
+    def compute_histo_source(self, source, hist, edges):
+        source.data = dict(top=hist, bottom=0, left=edges[:-1], right = edges[1:])
 
 
-def devol(log_returns, λ=0.06):
-    _com = (1 - λ) / λ
-#     log_returns = compute_logreturns(series)
-    σ = pd.ewmstd( log_returns, com=_com, ignore_na=True)
-    ξ = log_returns / σ
-    return ξ, σ
-        # self.df['Returns'].
+    # def compute_model(self, _lambda=0.06, n_days=1):
+        # log_returns = np.log(self.df.Close.pct_change(periods=n_days) + 1)
+        # self.source.data['LogReturns'] = log_returns[2:]
+        # self.source.data['LogReturnsColor'] = log_returns[2:].ge(0).map(lambda x: "#75968f" if x else "#a5bab7")
+        # self.source.data['mids'] = log_returns[2:] / 2.
+        # self.source.data['Vola'] = pd.ewmstd( log_returns, com=_com, ignore_na=True)[2:]
+        # self.source.data['ewma'] = pd.ewma( log_returns, com=_com, ignore_na=True)[2:]
 
-    def devol(self, l=0.96):
-        pass
+model = StockModel()
 
 class StockApp(VBox):
     """An example of a browser-based, interactive plot with slider controls."""
@@ -69,18 +79,16 @@ class StockApp(VBox):
     dates_slider = Instance(DateRangeSlider)
     lambda_slider = Instance(Slider)
 
-    plot = Instance(Plot)
+    histogram = Instance(Plot)
     outliers = Instance(Plot)
     returns = Instance(Plot)
 
-    # histogram_source = Instance(ColumnDataSource)
-
-    # model = Instance(StockModel)
     outliers_source = Instance(ColumnDataSource)
+    histogram_source = Instance(ColumnDataSource)
 
     @classmethod
     def create_histogram(cls, source):
-        toolset = "crosshair,pan,reset,resize,save,wheel_zoom,tap"
+        toolset = "crosshair,pan,reset,resize,save,wheel_zoom"
 
         # Generate a figure container
         plot = figure(title_text_font_size="12pt",
@@ -88,8 +96,6 @@ class StockApp(VBox):
                       plot_width=650,
                       tools=toolset,
                       title="Histogram",
-                      # x_range=[0, 4*np.pi],
-                      # y_range=[-2.5, 2.5]
         )
 
         # Plot the line by the x,y values in the source property
@@ -103,7 +109,7 @@ class StockApp(VBox):
     @classmethod
     def create_outliers(cls, source):
         x_column = "Date"
-        y_column = "Vola"
+        y_column = "Close"
 
         plot1 = figure(title="Outliers", plot_width=650, plot_height=400, x_axis_type="datetime")
         plot1.tools.append(TapTool(plot=plot1))
@@ -114,12 +120,10 @@ class StockApp(VBox):
     def create_returns(cls, source, range_obj):
         p = figure(title="Returns", plot_width=650, plot_height=400, x_axis_type="datetime", x_range=range_obj, tools=[])
         w = 20*60*60*1000 # half day in ms
-        p.rect(x="Date", y='mids', width=w, height='LogReturns', source=source)
+        p.rect(x="Date", y='y_mids', width=w, height='DevolLogReturns', color='LogReturnsColor', source=source)
         p.tools.append(TapTool(plot=p))
         p.tools.append(WheelZoomTool(dimensions=['width']))
         return p
-
-
 
     @classmethod
     def create(cls):
@@ -129,15 +133,14 @@ class StockApp(VBox):
         creating all objects (plots, datasources, etc)
         """
         obj = cls()
-
-        N = 1000
-        # x = np.linspace(-2, 2, N)
-        x = np.linspace(0,10,N)
-        y = np.sin(x**2)
-
-
-        model = StockModel()
-        obj.outliers_source = model.source
+        obj.outliers_source = model.compute_data_source()
+        obj.histogram_source = ColumnDataSource(
+            data=dict(
+                top=[],
+                bottom=0,
+                left=[],
+                right=[],
+                ))
 
         obj.lambda_slider = Slider(
             title="lambda",
@@ -147,23 +150,14 @@ class StockApp(VBox):
             end=0.99,
             step=0.01
         )
-        # start = '2010-01-01'
-        # end = '2015-01-01'
-        # obj.dates_slider = DateRangeSlider(title="Period:", name="period", value=(start,end), bounds=(start,end), range=(dict(days=1), None))
-        # print(obj.dates_slider)
-
 
         # Generate a figure container
-        obj.outliers = cls.create_outliers(model.source)
-        obj.returns = cls.create_returns(model.source, obj.outliers.x_range)
+        obj.outliers = cls.create_outliers(obj.outliers_source)
+        obj.returns = cls.create_returns(obj.outliers_source, obj.outliers.x_range)
+        obj.histogram = cls.create_histogram(obj.histogram_source)
         
-
         obj.update_data()
-        obj.children.append(obj.outliers)
-        obj.children.append(obj.returns)
-        # obj.children.append(obj.dates_slider)
-        # obj.children.append(obj.lambda_slider)   
-        # obj.children.append(obj.plot)
+        obj.children.append(gridplot([[obj.outliers], [obj.returns, obj.histogram]]))
 
         return obj
 
@@ -173,11 +167,10 @@ class StockApp(VBox):
         The callback is set to the input_change method of this app.
         """
         super(StockApp, self).setup_events()
-        if not self.dates_slider:
+        if not self.outliers:
             return
 
-        # Slider event registration
-        # self.dates_slider.on_change('value', self, 'input_change')
+        # Registration for selection event
         self.outliers_source.on_change('selected', self, 'on_selection_change')
         # for w in ["bins"]:
         #     getattr(self, w).on_change('value', self, 'input_change')
@@ -206,39 +199,32 @@ class StockApp(VBox):
         # Get the current slider values
         l = self.lambda_slider.value
         # obj.model.compute_model(_lambda=l)
-        # values = self.histogram_source.data['values']
-        #x = self.outliers_source.data['x']
-        #y = self.outliers_source.data['y']
-        #size = self.outliers_source.data['size']
         
-        # hist, edges = np.histogram(values, density=True, bins=bins)
+        
 
         logging.debug(
             "PARAMS: bins: %d", l
         )
 
+        # hist, edges = np.histogram(values, density=True, bins=bins)
         # self.histogram_source.data['top'] = hist
         # self.histogram_source.data['left'] = edges[:-1]
         # self.histogram_source.data['right'] = edges[1:]
         # self.histogram_source.data = dict(top=hist, bottom=0, left=edges[:-1], right = edges[1:], values=values)
     
-    def on_selection_change(self, attr, _, inds, x):
+    def on_selection_change(self, attr, old, new, x):
         # print(x, attr, _, inds, x)
         logging.debug(
             "I am being called"
         )
 
-
-        color = ["blue"] * self.outliers_source.data['N']
-        if inds:
-            [index] = inds
-            color[index] = "red"
-            # self.update_histogram_source(index)
-            self.update_data()
-            # print( index)
-
-        # obj.source.data["color"] = color
-        # obj.source.data = dict(top=hist, bottom=0, left=edges[:-1], right = edges[1:], values=values)
+        if x:
+            inds = np.array(x['1d']['indices'])
+            print("......>>> ", inds)
+            h = np.take(self.outliers_source.data['Date'], inds)
+            print(h)
+            hist, edges = model.compute_returns(h)
+            model.compute_histo_source(self.histogram_source, hist, edges)
         # session.store_objects(source2)
 
     # def update_histogram_source(self, t):
