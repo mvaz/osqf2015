@@ -12,7 +12,7 @@ Risk Management is driven by distinct but interdependent processes (e.g. VaR cal
 We evaluate, with concrete coded examples, existing open source tools from the Risk Analytics and complexity handling point of view. The examples use mainly the PyData (e.g. Pandas, Bokeh) stack and the Apache Spark framework.
 
 
-
+### Content
 It consists of a set of notebooks:
 - GetData
 - Tools introduction
