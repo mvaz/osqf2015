@@ -1,1 +1,0 @@
-{"cparams": {"clevel": 5, "shuffle": true}, "dflt": 0, "dtype": "datetime64[us]", "expectedlen": 4648, "chunklen": 16384}
