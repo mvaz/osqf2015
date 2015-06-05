@@ -23,7 +23,12 @@ You will need two conda environments:
 
 conda env create
 pip install -r requirements.txt
+source activate osqf
 
+conda env create -f=finspark.yml
+pip install -r requirements.txt
+source activate finspark
+ 
 ### References
 
 - 
