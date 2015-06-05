@@ -11,10 +11,10 @@ We evaluate, with concrete coded examples, existing open source tools from the R
 
 ### Content
 It consists of a set of notebooks:
-- GetData
+- [Data Preparation](notebooks/DataPreparation.ipynb)
 - Tools introduction
 - Model
-- [VaRSpark](notebooks/SparkVaR)
+- [VaRSpark](notebooks/SparkVaR.ipynb)
 
 
 ### Setup
