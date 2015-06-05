@@ -55,3 +55,6 @@ docs/_build/
 
 # PyBuilder
 target/
+
+# Private files
+.quandl_api_key.txt

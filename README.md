@@ -24,7 +24,7 @@ It consists of a set of notebooks:
 
 You will need two conda environments:
 
-
+conda env create
 pip install -r requirements.txt
 
 ### References
