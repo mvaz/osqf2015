@@ -14,7 +14,7 @@ It consists of a set of notebooks:
 - GetData
 - Tools introduction
 - Model
-- [VaRSpark](notebooks/VaRSpark)
+- [VaRSpark](notebooks/SparkVaR)
 
 
 ### Setup
